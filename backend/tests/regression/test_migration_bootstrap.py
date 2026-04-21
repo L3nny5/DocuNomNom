@@ -41,10 +41,7 @@ def test_migration_runs_without_external_alembic_ini(tmp_path: Path, monkeypatch
     con = sqlite3.connect(str(db_path))
     try:
         tables = {
-            row[0]
-            for row in con.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+            row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
     finally:
         con.close()

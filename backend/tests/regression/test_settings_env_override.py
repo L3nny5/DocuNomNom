@@ -87,16 +87,13 @@ def test_single_underscore_env_still_supported(monkeypatch: pytest.MonkeyPatch) 
     assert s.worker.max_attempts == 9
 
 
-def test_double_underscore_env_overrides_yaml(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_double_underscore_env_overrides_yaml(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Env precedence: the double-underscore form must beat a value
     coming from the YAML layer, same as the built-in env source does."""
     _clear_docunomnom_env(monkeypatch)
     cfg = tmp_path / "custom.yaml"
     cfg.write_text(
-        "storage:\n"
-        "  database_url: sqlite:///./data/from-yaml.sqlite3\n",
+        "storage:\n  database_url: sqlite:///./data/from-yaml.sqlite3\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("DOCUNOMNOM_CONFIG", str(cfg))
