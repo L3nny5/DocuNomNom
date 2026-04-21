@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..config import get_settings
 from ..runtime import LogEvent, configure_logging
 from . import __api_version__
+from .frontend import mount_frontend
 from .routers import config as config_router
 from .routers import health, history, jobs, keywords, review
 
@@ -59,6 +60,13 @@ def create_app() -> FastAPI:
     app.include_router(config_router.router, prefix=api_prefix)
     app.include_router(keywords.router, prefix=api_prefix)
     app.include_router(review.router, prefix=api_prefix)
+
+    # Must come AFTER include_router so the SPA catch-all never shadows
+    # an API route. A missing bundle simply leaves the app API-only —
+    # useful in tests and for operators who front the UI with a
+    # separate CDN.
+    mount_frontend(app, api_prefix=api_prefix)
+
     return app
 
 
