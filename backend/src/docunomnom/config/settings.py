@@ -275,6 +275,74 @@ class _YamlConfigSource(PydanticBaseSettingsSource):
         return {k: v for k, v in self._data.items() if v is not ...}
 
 
+# Env-var convention documented above: ``DOCUNOMNOM__SECTION__KEY`` (double
+# underscore after the prefix, double underscore between section and key).
+# pydantic-settings' built-in env source, with ``env_prefix='DOCUNOMNOM_'``
+# and ``env_nested_delimiter='__'``, actually matches
+# ``DOCUNOMNOM_SECTION__KEY`` (single underscore after the prefix), which
+# is a different shape. The double-underscore-after-prefix form is what
+# the deploy configs (``compose.truenas.yaml`` and the production docker
+# stack) use and what operators are documented to set, so we honor it
+# here via an extra source. The built-in env source is preserved so the
+# single-underscore form keeps working too.
+_DOUBLE_UNDERSCORE_PREFIX = "DOCUNOMNOM__"
+
+
+def _parse_double_underscore_env(env: dict[str, str]) -> dict[str, Any]:
+    """Parse ``DOCUNOMNOM__SECTION__KEY=value`` entries into a nested
+    dict ``{'section': {'key': value}}`` suitable as a settings source.
+
+    Matching is case-insensitive to mirror ``case_sensitive=False`` on
+    the ``Settings`` model. Keys that do not start with the double-
+    underscore prefix are ignored; they belong to the regular
+    single-underscore env source.
+    """
+    out: dict[str, Any] = {}
+    for raw_key, raw_value in env.items():
+        if not raw_key.upper().startswith(_DOUBLE_UNDERSCORE_PREFIX):
+            continue
+        body = raw_key[len(_DOUBLE_UNDERSCORE_PREFIX) :]
+        if not body:
+            continue
+        parts = [p for p in body.split("__") if p]
+        if not parts:
+            continue
+        cursor: dict[str, Any] = out
+        for part in parts[:-1]:
+            key = part.lower()
+            existing = cursor.get(key)
+            if not isinstance(existing, dict):
+                existing = {}
+                cursor[key] = existing
+            cursor = existing
+        cursor[parts[-1].lower()] = raw_value
+    return out
+
+
+class _DoubleUnderscoreEnvSource(PydanticBaseSettingsSource):
+    """Settings source that reads ``DOCUNOMNOM__SECTION__KEY`` env vars.
+
+    Complements the built-in env source (which handles ``DOCUNOMNOM_*``
+    top-level vars) so both conventions documented at the top of this
+    module resolve correctly. Runs at env-level precedence so the
+    ``sqlite:////data/...`` URL set in the production compose file wins
+    over the YAML layer, matching what operators expect.
+    """
+
+    def __init__(self, settings_cls: type[BaseSettings]) -> None:
+        super().__init__(settings_cls)
+        import os
+
+        self._data: dict[str, Any] = _parse_double_underscore_env(dict(os.environ))
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        value = self._data.get(field_name, ...)
+        return value, field_name, value is not ...
+
+    def __call__(self) -> dict[str, Any]:
+        return dict(self._data)
+
+
 class Settings(BaseSettings):
     """Top-level settings.
 
@@ -310,10 +378,13 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        # Order = precedence (first source wins).
+        # Order = precedence (first source wins). The double-underscore
+        # env source sits at env-level precedence alongside the built-in
+        # one: both override YAML, neither overrides explicit init args.
         return (
             init_settings,
             env_settings,
+            _DoubleUnderscoreEnvSource(settings_cls),
             _YamlConfigSource(settings_cls),
             dotenv_settings,
             file_secret_settings,

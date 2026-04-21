@@ -24,19 +24,56 @@ def create_all_for_tests(engine: Engine) -> None:
     Base.metadata.create_all(engine)
 
 
+def _packaged_migrations_dir() -> Path:
+    """Resolve the directory that ships the Alembic ``env.py`` and
+    ``versions/`` tree.
+
+    The migrations tree is force-included into the wheel via
+    ``pyproject.toml`` (``[tool.hatch.build.targets.wheel.force-include]``),
+    so it lives next to the ``docunomnom.storage`` package both in an
+    installed context (``site-packages/docunomnom/storage/migrations``)
+    and in a source checkout (``backend/src/docunomnom/storage/migrations``).
+    """
+    migrations_dir = Path(__file__).resolve().parent.parent / "migrations"
+    if not (migrations_dir / "env.py").is_file():
+        raise RuntimeError(
+            f"Alembic migrations directory is missing or incomplete at "
+            f"{migrations_dir}; the package build is broken. "
+            "Expected env.py alongside versions/."
+        )
+    return migrations_dir
+
+
 def run_alembic_upgrade(database_url: str, *, alembic_ini: str | Path | None = None) -> None:
     """Run ``alembic upgrade head`` against ``database_url``.
 
-    Designed to be called from the entrypoint or a small CLI; resolves the
-    Alembic config relative to the backend root by default.
+    Two supported modes:
+
+    * ``alembic_ini is None`` (the production / installed-package path):
+      build an ``alembic.config.Config`` purely in memory, pointing
+      ``script_location`` at the migrations directory shipped inside the
+      ``docunomnom`` package. This is what the Docker worker uses and it
+      does NOT require an external ``alembic.ini`` file on disk — the
+      image only needs the installed wheel.
+
+    * ``alembic_ini`` given (developer / CI convenience): load that file
+      as usual. This preserves ``backend/alembic.ini`` for the ``alembic``
+      CLI workflow (autogenerate, history, etc.).
+
+    In both modes ``sqlalchemy.url`` is overridden with ``database_url``
+    so the env override resolved by :mod:`docunomnom.config.settings`
+    always wins over any static value inside an ini file.
     """
     from alembic import command
     from alembic.config import Config
 
-    if alembic_ini is None:
-        # backend/alembic.ini, three levels up from this file:
-        # src/docunomnom/storage/db/bootstrap.py -> backend/
-        alembic_ini = Path(__file__).resolve().parents[4] / "alembic.ini"
-    cfg = Config(str(alembic_ini))
+    if alembic_ini is not None:
+        cfg = Config(str(alembic_ini))
+    else:
+        # File-less config: Alembic accepts a Config() with no ini file
+        # as long as script_location is set programmatically.
+        cfg = Config()
+        cfg.set_main_option("script_location", str(_packaged_migrations_dir()))
+
     cfg.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(cfg, "head")
