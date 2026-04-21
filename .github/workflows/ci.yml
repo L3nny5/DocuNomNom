@@ -149,8 +149,16 @@ jobs:
           migrations = _packaged_migrations_dir()
           assert (migrations / "env.py").is_file(), "env.py missing in image"
           assert any(migrations.joinpath("versions").glob("*.py")), "no versions shipped"
-          print(f"docunomnom {docunomnom.__name__} smoke OK; migrations at {migrations}")
+          # The image must expose ocrmypdf to the same interpreter that
+          # runs the worker. Regression guard for the Debian-vs-Python
+          # version mismatch that shipped an unusable OCRmyPDF backend
+          # to production until v1.0.x.
+          import ocrmypdf
+          assert hasattr(ocrmypdf, "ocr"), "ocrmypdf.ocr not exposed"
+          print(f"docunomnom smoke OK; migrations at {migrations}; ocrmypdf={ocrmypdf.__version__}")
           PY
+          # Also confirm the OCRmyPDF runtime binaries are wired.
+          docker run --rm --entrypoint ocrmypdf "${IMAGE}" --version >/dev/null
 
       # Second build (push=true) reuses the layer cache from the build
       # step, so this step is effectively a registry upload. Skipped on

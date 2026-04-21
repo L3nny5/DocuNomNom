@@ -38,21 +38,28 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DOCUNOMNOM_LOG_FORMAT=json
 
-# OCRmyPDF needs Tesseract (with the language packs we ship), Ghostscript,
-# unpaper and qpdf at runtime. tini is used as PID 1 so SIGTERM reaches
-# the worker cleanly; gosu drops to the unprivileged `app` user.
+# OCRmyPDF shells out to Tesseract, Ghostscript, unpaper, qpdf and
+# (optionally) pngquant. We install those as system packages. The
+# ocrmypdf Python library itself comes from PyPI a few layers below —
+# the Debian ``ocrmypdf`` apt package installs it for the system's
+# Python 3.11 under /usr/lib/python3/dist-packages/, which is NOT on
+# the import path of the Python 3.12 interpreter shipped by the
+# ``python:3.12-slim-bookworm`` base image, so ``import ocrmypdf``
+# would fail at runtime with ``ocr_config_error``. tini is used as
+# PID 1 so SIGTERM reaches the worker cleanly; gosu drops to the
+# unprivileged ``app`` user.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         tini \
         gosu \
-        ocrmypdf \
         tesseract-ocr \
         tesseract-ocr-eng \
         tesseract-ocr-deu \
         ghostscript \
         unpaper \
         qpdf \
+        pngquant \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -g 1000 app && useradd -m -u 1000 -g 1000 app
@@ -61,7 +68,9 @@ WORKDIR /app
 
 COPY backend/pyproject.toml backend/README.md /app/backend/
 COPY backend/src /app/backend/src
-RUN pip install --no-cache-dir /app/backend
+# Install the backend + the ``ocr`` extra so the OCRmyPDF backend is
+# actually importable from Python 3.12 at runtime.
+RUN pip install --no-cache-dir "/app/backend[ocr]"
 
 COPY --from=frontend-build /build/frontend/dist /app/frontend-dist
 

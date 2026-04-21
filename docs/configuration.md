@@ -8,6 +8,37 @@ decreasing precedence:
 3. The bundled `defaults.yaml` next to the settings module.
 4. Model defaults declared in `config/settings.py`.
 
+## UI vs. ENV/YAML surfaces
+
+The REST `/config` endpoint (and its UI) only exposes the subset of
+settings that are safe to change at runtime without redeploying the
+container. Deployment-level concerns — filesystem paths, database
+URLs, network egress policy, secrets — intentionally live only in
+ENV/YAML.
+
+| Section                                       | UI | ENV/YAML |
+| --------------------------------------------- | :-: | :-: |
+| `paths.*`                                     |    | ✔ |
+| `storage.*`                                   |    | ✔ |
+| `network.*`                                   |    | ✔ |
+| `ocr.backend`, `ocr.languages`                | ✔ | ✔ |
+| `ocr.ocrmypdf.*`, `ocr.external_api.*`        |    | ✔ |
+| `ai.backend`, `ai.mode`                       | ✔ | ✔ |
+| `ai.ollama.*`, `ai.openai.*`                  |    | ✔ |
+| `ai.thresholds`, `ai.evidence`, `ai.refine`   |    | ✔ |
+| `splitter` weights + `auto_export_threshold`  | ✔ | ✔ |
+| `splitter.min_pages_per_part`                 | ✔ | ✔ |
+| `exporter.archive_after_export`               | ✔ | ✔ |
+| Keywords (term / locale / enabled / weight)   | ✔ | ✔ |
+| `worker.*`, `ingestion.*`, `runtime.*`        |    | ✔ |
+| Logging (`DOCUNOMNOM_LOG_LEVEL`, `_LOG_FORMAT`) |    | ✔ |
+
+UI overrides are persisted in the `config_profiles` table. v1 does
+not yet wire every override back into the worker pipeline — treat
+**keywords** and **splitter weights / thresholds** as the primary
+live-tunable surfaces, and ENV/YAML as the source of truth for
+everything else.
+
 ## Environment variable mapping
 
 The env prefix is `DOCUNOMNOM_`. Nested fields use a double underscore:
@@ -62,6 +93,34 @@ Queue knobs: `poll_interval_seconds`, `lease_ttl_seconds`,
 | `languages`     | `["eng", "deu"]`                       |
 | `ocrmypdf.*`    | deskew, rotate_pages, optimize, jobs, timeout |
 | `external_api.*` | endpoint, api_key, retries, https-required, payload caps |
+
+Backend requirements:
+
+- `ocrmypdf` — the `ocrmypdf` Python package must be importable from
+  the worker's interpreter. The published image installs it via the
+  `docunomnom[ocr]` extra alongside system binaries (tesseract,
+  ghostscript, unpaper, qpdf, pngquant). Preflight check
+  `ocr.backend_available` fails at boot if it isn't importable (see
+  the troubleshooting note below).
+- `external_api` — `ocr.external_api.endpoint` must be set and
+  reachable. For non-localhost endpoints you also need
+  `network.allow_external_egress=true` and the host in
+  `network.allowed_hosts`. HTTPS is required unless
+  `ocr.external_api.allow_http=true` (discouraged).
+
+Troubleshooting:
+
+> `ocr_config_error: ocrmypdf is not installed but the OCRmyPDF
+> backend was selected`
+>
+> The `ocrmypdf` Python module is not on the worker interpreter's
+> import path. Use the published image, or if you build your own
+> image make sure `pip install 'docunomnom[ocr]'` runs inside the
+> final image. The Debian `ocrmypdf` apt package alone is not
+> sufficient when the container's Python differs from the system
+> Python (e.g. the `python:3.12-slim-bookworm` base). From v1.0.x
+> this is caught at boot by the `ocr.backend_available` preflight
+> check instead of failing on the first job.
 
 ### `network`
 

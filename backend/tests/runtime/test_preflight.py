@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -13,20 +15,38 @@ from docunomnom.config.settings import (
     AiThresholdSettings,
     ExporterSettings,
     NetworkSettings,
+    OcrSettings,
     PathSettings,
     SplitterSettings,
     StorageSettings,
 )
-from docunomnom.core.models import AiBackend, AiMode
+from docunomnom.core.models import AiBackend, AiMode, OcrBackend
 from docunomnom.runtime.preflight import (
     PreflightError,
     SingleWorkerLockError,
+    _check_ocr_backend_available,
     _check_sqlite_safe_mount,
     _classify_mount,
     _sqlite_file_path,
     acquire_single_worker_lock,
     run_preflight,
 )
+
+
+@pytest.fixture(autouse=True)
+def _fake_ocrmypdf_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make ``import ocrmypdf`` succeed in the dev venv.
+
+    The real package is an optional runtime extra shipped only in the
+    Docker image. The preflight test module focuses on OTHER checks,
+    so we stub the module here to keep them independent. Tests that
+    exercise the OCR availability check itself override this via an
+    explicit ``importer`` argument or by re-patching ``sys.modules``.
+    """
+    if "ocrmypdf" not in sys.modules:
+        stub = types.ModuleType("ocrmypdf")
+        stub.ocr = lambda **_: None  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "ocrmypdf", stub)
 
 
 def _settings_for(tmp_path: Path) -> Settings:
@@ -152,6 +172,65 @@ def test_pipeline_version_must_be_semver(tmp_path: Path) -> None:
     with pytest.raises(PreflightError) as exc:
         run_preflight(settings)
     assert exc.value.code == "runtime.pipeline_version"
+
+
+# --- OCR backend availability --------------------------------------------
+
+
+def test_ocr_backend_available_passes_for_external_api(tmp_path: Path) -> None:
+    """``external_api`` does not need a Python import check."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.EXTERNAL_API)
+
+    def _fail_if_called(_: str) -> object:
+        raise AssertionError("external_api must not import ocrmypdf")
+
+    check = _check_ocr_backend_available(settings, importer=_fail_if_called)
+    assert check.ok, check.detail
+    assert check.name == "ocr.backend_available"
+
+
+def test_ocr_backend_available_fails_when_ocrmypdf_missing(tmp_path: Path) -> None:
+    """Regression guard for the apt-vs-pip python version mismatch: the
+    image used to ship the Debian ``ocrmypdf`` package (Python 3.11 dist
+    only), which made ``import ocrmypdf`` fail at first-job time with
+    ``ocr_config_error``. Preflight must now catch this at boot."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.OCRMYPDF)
+
+    def _missing(module: str) -> object:
+        assert module == "ocrmypdf"
+        raise ImportError("No module named 'ocrmypdf'")
+
+    check = _check_ocr_backend_available(settings, importer=_missing)
+    assert not check.ok
+    assert "ocrmypdf" in check.detail
+    assert "docunomnom[ocr]" in check.detail
+
+
+def test_ocr_backend_available_raises_via_run_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Full integration: a missing ocrmypdf import must raise
+    ``PreflightError`` with code ``ocr.backend_available`` so the worker
+    refuses to boot instead of accepting jobs it cannot process."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.OCRMYPDF)
+
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _blocked_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "ocrmypdf":
+            raise ImportError("No module named 'ocrmypdf'")
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", _blocked_import)
+
+    with pytest.raises(PreflightError) as exc:
+        run_preflight(settings)
+    assert exc.value.code == "ocr.backend_available"
 
 
 # --- SQLite mount classification ------------------------------------------

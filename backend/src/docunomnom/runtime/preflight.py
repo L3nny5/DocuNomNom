@@ -42,7 +42,7 @@ from typing import Self
 from sqlalchemy.engine.url import make_url
 
 from ..config import Settings
-from ..core.models import AiBackend, AiMode
+from ..core.models import AiBackend, AiMode, OcrBackend
 
 logger = logging.getLogger("docunomnom.runtime.preflight")
 
@@ -340,6 +340,50 @@ def _check_ai_coherence(settings: Settings) -> tuple[PreflightCheck, ...]:
     return tuple(out)
 
 
+def _check_ocr_backend_available(
+    settings: Settings,
+    *,
+    importer: Callable[[str], object] | None = None,
+) -> PreflightCheck:
+    """Fail fast when the selected OCR backend's Python dependencies
+    are not importable in this interpreter.
+
+    This catches the common Docker misconfiguration where the Debian
+    ``ocrmypdf`` apt package is installed (which ships its Python
+    module for the system Python) but the worker runs on a different
+    Python (e.g. the ``python:3.12-slim-bookworm`` image's Python 3.12,
+    which cannot see /usr/lib/python3/dist-packages). Without this
+    check the worker boots fine and crashes on the first job with
+    ``ocr_config_error: ocrmypdf is not installed`` — we want that
+    failure at startup instead.
+
+    ``external_api`` has no Python import to probe; its runtime
+    requirements (egress + allowed_hosts + https) are covered by the
+    AI/network coherence checks and by ``GenericExternalOcrAdapter``'s
+    own validation at call time.
+    """
+    name = "ocr.backend_available"
+    if settings.ocr.backend is not OcrBackend.OCRMYPDF:
+        return PreflightCheck(name=name, ok=True, detail=f"backend={settings.ocr.backend.value}")
+
+    import_fn = importer or __import__
+    try:
+        import_fn("ocrmypdf")
+    except ImportError as exc:
+        return PreflightCheck(
+            name=name,
+            ok=False,
+            detail=(
+                "ocr.backend='ocrmypdf' but the 'ocrmypdf' Python package is "
+                f"not importable ({exc}). Install it into the worker's "
+                "interpreter (e.g. `pip install 'docunomnom[ocr]'`) — the "
+                "Debian apt package alone is not enough when the worker "
+                "runs on a different Python than the system one."
+            ),
+        )
+    return PreflightCheck(name=name, ok=True, detail="ocrmypdf importable")
+
+
 def _check_splitter_weights(settings: Settings) -> PreflightCheck:
     s = settings.splitter
     total = s.keyword_weight + s.layout_weight + s.page_number_weight
@@ -417,6 +461,7 @@ def run_preflight(
         )
     )
     checks.extend(_check_ai_coherence(settings))
+    checks.append(_check_ocr_backend_available(settings))
     checks.append(_check_splitter_weights(settings))
     checks.append(_check_pipeline_version(settings))
 
