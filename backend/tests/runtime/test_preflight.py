@@ -15,6 +15,7 @@ from docunomnom.config.settings import (
     AiThresholdSettings,
     ExporterSettings,
     NetworkSettings,
+    OcrmypdfSettings,
     OcrSettings,
     PathSettings,
     SplitterSettings,
@@ -24,9 +25,11 @@ from docunomnom.core.models import AiBackend, AiMode, OcrBackend
 from docunomnom.runtime.preflight import (
     PreflightError,
     SingleWorkerLockError,
+    _check_ghostscript_version,
     _check_ocr_backend_available,
     _check_sqlite_safe_mount,
     _classify_mount,
+    _parse_gs_version,
     _sqlite_file_path,
     acquire_single_worker_lock,
     run_preflight,
@@ -206,6 +209,93 @@ def test_ocr_backend_available_fails_when_ocrmypdf_missing(tmp_path: Path) -> No
     assert not check.ok
     assert "ocrmypdf" in check.detail
     assert "docunomnom[ocr]" in check.detail
+
+
+def test_parse_gs_version_handles_common_shapes() -> None:
+    assert _parse_gs_version("10.05.1") == (10, 5, 1)
+    assert _parse_gs_version("10.05.1\n") == (10, 5, 1)
+    assert _parse_gs_version("10.0") == (10, 0, 0)
+    assert _parse_gs_version("10.0.0") == (10, 0, 0)
+    assert _parse_gs_version("10.02.0") == (10, 2, 0)
+    assert _parse_gs_version("not-a-version") is None
+    assert _parse_gs_version("") is None
+
+
+def test_ghostscript_version_passes_for_external_api(tmp_path: Path) -> None:
+    """``external_api`` never shells out to Ghostscript locally."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.EXTERNAL_API)
+
+    def _should_not_run() -> str | None:
+        raise AssertionError("external_api must not probe ghostscript")
+
+    check = _check_ghostscript_version(settings, version_provider=_should_not_run)
+    assert check.ok, check.detail
+
+
+def test_ghostscript_version_passes_when_skip_text_disabled(tmp_path: Path) -> None:
+    """Disabling skip_text sidesteps the GS regression window."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(
+        backend=OcrBackend.OCRMYPDF,
+        ocrmypdf=OcrmypdfSettings(skip_text=False),
+    )
+
+    def _should_not_run() -> str | None:
+        raise AssertionError("skip_text=false must short-circuit the GS check")
+
+    check = _check_ghostscript_version(settings, version_provider=_should_not_run)
+    assert check.ok, check.detail
+
+
+def test_ghostscript_version_skips_when_gs_missing(tmp_path: Path) -> None:
+    """Missing gs on PATH defers to ocrmypdf's own job-time check."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.OCRMYPDF)
+
+    check = _check_ghostscript_version(settings, version_provider=lambda: None)
+    assert check.ok
+    assert "deferring" in check.detail
+
+
+@pytest.mark.parametrize("version", ["10.0.0", "10.0", "10.01.2", "10.02.0"])
+def test_ghostscript_version_fails_in_broken_range(tmp_path: Path, version: str) -> None:
+    """Regression guard for the Debian bookworm (GS 10.0.0) scenario
+    that shipped to production and failed with
+    ``ocr_failed: ocrmypdf failed: Ghostscript 10.0.0 through 10.02.0
+    contain serious regressions``."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.OCRMYPDF)
+
+    check = _check_ghostscript_version(settings, version_provider=lambda: version)
+    assert not check.ok
+    assert "10.0.0..10.02.0" in check.detail
+    assert "10.02.1" in check.detail or "trixie" in check.detail
+
+
+@pytest.mark.parametrize("version", ["10.02.1", "10.03.0", "10.05.1", "11.0.0"])
+def test_ghostscript_version_passes_for_fixed_releases(tmp_path: Path, version: str) -> None:
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.OCRMYPDF)
+
+    check = _check_ghostscript_version(settings, version_provider=lambda: version)
+    assert check.ok, check.detail
+
+
+def test_ghostscript_broken_range_fails_via_run_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end: a broken Ghostscript surfaces as PreflightError with
+    the ``ocr.ghostscript_version`` code."""
+    settings = _settings_for(tmp_path)
+    settings.ocr = OcrSettings(backend=OcrBackend.OCRMYPDF)
+
+    from docunomnom.runtime import preflight as pf
+
+    monkeypatch.setattr(pf, "_default_gs_version_provider", lambda: "10.0.0")
+    with pytest.raises(PreflightError) as exc:
+        run_preflight(settings)
+    assert exc.value.code == "ocr.ghostscript_version"
 
 
 def test_ocr_backend_available_raises_via_run_preflight(

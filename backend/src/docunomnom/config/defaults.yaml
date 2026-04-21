@@ -41,6 +41,7 @@ ocr:
     - eng
     - deu
   ocrmypdf:
+    clean_before_ocr: true
     deskew: true
     rotate_pages: true
     skip_text: true

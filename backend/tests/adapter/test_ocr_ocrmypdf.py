@@ -7,6 +7,7 @@ ocrmypdf would.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,11 @@ def _fake_runner(*, sidecar_pages: list[str]) -> Any:
     return runner
 
 
+def _copy_sanitizer(source: Path, cleaned: Path) -> None:
+    """Test sanitizer that preserves input bytes without shelling out."""
+    shutil.copyfile(source, cleaned)
+
+
 def test_ocrmypdf_adapter_normalizes_pages(tmp_path: Path) -> None:
     src = _make_pdf(tmp_path / "in.pdf", pages=2)
     work = tmp_path / "work"
@@ -46,6 +52,7 @@ def test_ocrmypdf_adapter_normalizes_pages(tmp_path: Path) -> None:
         settings=OcrmypdfSettings(),
         work_dir=work,
         runner=_fake_runner(sidecar_pages=["page one text", "page two text"]),
+        sanitizer=_copy_sanitizer,
     )
 
     result = adapter.ocr_pdf(str(src), languages=("eng",))
@@ -74,6 +81,7 @@ def test_ocrmypdf_adapter_passes_language_string(tmp_path: Path) -> None:
         settings=OcrmypdfSettings(),
         work_dir=work,
         runner=runner,
+        sanitizer=_copy_sanitizer,
     )
     adapter.ocr_pdf(str(src), languages=("eng", "deu"))
 
@@ -86,6 +94,7 @@ def test_ocrmypdf_adapter_missing_source_raises(tmp_path: Path) -> None:
         settings=OcrmypdfSettings(),
         work_dir=tmp_path / "work",
         runner=_fake_runner(sidecar_pages=["x"]),
+        sanitizer=_copy_sanitizer,
     )
     with pytest.raises(OcrConfigError):
         adapter.ocr_pdf(str(tmp_path / "missing.pdf"))
@@ -104,6 +113,58 @@ def test_ocrmypdf_adapter_short_sidecar_pads(tmp_path: Path) -> None:
         settings=OcrmypdfSettings(),
         work_dir=tmp_path / "work",
         runner=runner,
+        sanitizer=_copy_sanitizer,
     )
     result = adapter.ocr_pdf(str(src))
     assert [p.text for p in result.pages] == ["only first page", "", ""]
+
+
+def test_ocrmypdf_adapter_sanitizes_before_runner_by_default(tmp_path: Path) -> None:
+    src = _make_pdf(tmp_path / "in.pdf", pages=1)
+    seen: dict[str, Any] = {"sanitized": False}
+
+    def sanitizer(source: Path, cleaned: Path) -> None:
+        seen["sanitized"] = True
+        shutil.copyfile(source, cleaned)
+
+    def runner(**kwargs: Any) -> None:
+        in_path = Path(kwargs["input_file"])
+        assert in_path.name.endswith(".clean.pdf")
+        assert in_path.exists()
+        out = Path(kwargs["output_file"])
+        side = Path(kwargs["sidecar"])
+        _make_pdf(out, pages=1)
+        side.write_text("ok", encoding="utf-8")
+
+    adapter = OcrmypdfAdapter(
+        settings=OcrmypdfSettings(),
+        work_dir=tmp_path / "work",
+        runner=runner,
+        sanitizer=sanitizer,
+    )
+    adapter.ocr_pdf(str(src))
+    assert seen["sanitized"] is True
+
+
+def test_ocrmypdf_adapter_can_disable_sanitize_via_setting(tmp_path: Path) -> None:
+    src = _make_pdf(tmp_path / "in.pdf", pages=1)
+    seen: dict[str, Any] = {"sanitized": False}
+
+    def sanitizer(_: Path, __: Path) -> None:
+        seen["sanitized"] = True
+
+    def runner(**kwargs: Any) -> None:
+        assert Path(kwargs["input_file"]) == src
+        out = Path(kwargs["output_file"])
+        side = Path(kwargs["sidecar"])
+        _make_pdf(out, pages=1)
+        side.write_text("ok", encoding="utf-8")
+
+    adapter = OcrmypdfAdapter(
+        settings=OcrmypdfSettings(clean_before_ocr=False),
+        work_dir=tmp_path / "work",
+        runner=runner,
+        sanitizer=sanitizer,
+    )
+    adapter.ocr_pdf(str(src))
+    assert seen["sanitized"] is False

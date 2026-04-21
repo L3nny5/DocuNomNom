@@ -91,7 +91,7 @@ Queue knobs: `poll_interval_seconds`, `lease_ttl_seconds`,
 | --------------- | -------------------------------------- |
 | `backend`       | `ocrmypdf`                             |
 | `languages`     | `["eng", "deu"]`                       |
-| `ocrmypdf.*`    | deskew, rotate_pages, optimize, jobs, timeout |
+| `ocrmypdf.*`    | clean_before_ocr, deskew, rotate_pages, optimize, jobs, timeout |
 | `external_api.*` | endpoint, api_key, retries, https-required, payload caps |
 
 Backend requirements:
@@ -102,6 +102,10 @@ Backend requirements:
   ghostscript, unpaper, qpdf, pngquant). Preflight check
   `ocr.backend_available` fails at boot if it isn't importable (see
   the troubleshooting note below).
+- `ocr.ocrmypdf.clean_before_ocr` defaults to `true` and runs a
+  mandatory qpdf rewrite pass before OCRmyPDF starts. Disable only as
+  a temporary escape hatch with
+  `DOCUNOMNOM__OCR__OCRMYPDF__CLEAN_BEFORE_OCR=false`.
 - `external_api` — `ocr.external_api.endpoint` must be set and
   reachable. For non-localhost endpoints you also need
   `network.allow_external_egress=true` and the host in
@@ -118,9 +122,19 @@ Troubleshooting:
 > image make sure `pip install 'docunomnom[ocr]'` runs inside the
 > final image. The Debian `ocrmypdf` apt package alone is not
 > sufficient when the container's Python differs from the system
-> Python (e.g. the `python:3.12-slim-bookworm` base). From v1.0.x
+> Python (e.g. the `python:3.12-slim-trixie` base). From v1.0.x
 > this is caught at boot by the `ocr.backend_available` preflight
 > check instead of failing on the first job.
+
+> `ocr_failed: ocrmypdf failed: Ghostscript 10.0.0 through 10.02.0
+> contain serious regressions …`
+>
+> The container was built on a base (typically Debian Bookworm)
+> whose Ghostscript has known upstream regressions that corrupt PDFs
+> with existing text when `--skip-text` is used. Rebuild on Debian
+> Trixie or newer (Ghostscript >= 10.02.1; Trixie ships 10.05.1), or
+> set `ocr.ocrmypdf.skip_text=false` as a temporary workaround.
+> Preflight check `ocr.ghostscript_version` catches this at boot.
 
 ### `network`
 

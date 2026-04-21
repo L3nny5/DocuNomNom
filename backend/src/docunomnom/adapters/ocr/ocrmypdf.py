@@ -16,6 +16,7 @@ without the binary can still import this module.
 from __future__ import annotations
 
 import logging
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,10 +52,12 @@ class OcrmypdfAdapter:
         settings: OcrmypdfSettings,
         work_dir: Path,
         runner: Callable[..., None] | None = None,
+        sanitizer: Callable[[Path, Path], None] | None = None,
     ) -> None:
         self._settings = settings
         self._work_dir = work_dir
         self._runner = runner
+        self._sanitizer = sanitizer
 
     def ocr_pdf(
         self,
@@ -68,11 +71,12 @@ class OcrmypdfAdapter:
 
         self._work_dir.mkdir(parents=True, exist_ok=True)
         outputs = self._build_output_paths(source)
+        sanitized_source = self._sanitize_input_pdf(source)
 
         runner = self._runner or self._default_runner
         try:
             runner(
-                input_file=str(source),
+                input_file=str(sanitized_source),
                 output_file=str(outputs.ocr_pdf_path),
                 sidecar=str(outputs.sidecar_path),
                 language="+".join(languages),
@@ -111,6 +115,54 @@ class OcrmypdfAdapter:
             ocr_pdf_path=self._work_dir / f"{stem}.ocr.pdf",
             sidecar_path=self._work_dir / f"{stem}.ocr.txt",
         )
+
+    def _sanitize_input_pdf(self, source: Path) -> Path:
+        """Optionally rewrite input PDF via qpdf before OCR.
+
+        Rewriting catches malformed structures early and normalizes input
+        for OCRmyPDF/Ghostscript. The source file is never modified in place;
+        cleaned output is written under the job work directory.
+        """
+        if not self._settings.clean_before_ocr:
+            return source
+
+        cleaned = self._work_dir / f"{source.stem}.clean.pdf"
+        sanitizer = self._sanitizer or self._default_sanitizer
+        try:
+            sanitizer(source, cleaned)
+        except OcrAdapterError:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            raise OcrConfigError(f"failed to sanitize PDF before OCR: {exc}") from exc
+        if not cleaned.exists():
+            raise OcrConfigError(f"sanitize step did not produce output PDF at {cleaned}")
+        return cleaned
+
+    @staticmethod
+    def _default_sanitizer(source: Path, cleaned: Path) -> None:
+        """Rewrite ``source`` into ``cleaned`` using qpdf.
+
+        qpdf is already part of the runtime image as an OCRmyPDF dependency.
+        """
+        try:
+            result = subprocess.run(
+                ["qpdf", "--warning-exit-0", str(source), str(cleaned)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise OcrConfigError(
+                "qpdf is not installed but clean_before_ocr=true requires it"
+            ) from exc
+        if result.returncode != 0:
+            stderr = (
+                (result.stderr or "").strip()
+                or (result.stdout or "").strip()
+                or "unknown qpdf error"
+            )
+            raise OcrConfigError(f"qpdf sanitize step failed: {stderr}")
 
     @staticmethod
     def _default_runner(**kwargs: object) -> None:

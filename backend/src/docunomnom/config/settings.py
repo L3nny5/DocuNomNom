@@ -81,6 +81,7 @@ class WorkerSettings(BaseModel):
 class OcrmypdfSettings(BaseModel):
     """Local OCR via OCRmyPDF."""
 
+    clean_before_ocr: bool = True
     deskew: bool = True
     rotate_pages: bool = True
     skip_text: bool = True

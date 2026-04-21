@@ -384,6 +384,115 @@ def _check_ocr_backend_available(
     return PreflightCheck(name=name, ok=True, detail="ocrmypdf importable")
 
 
+GsVersionProvider = Callable[[], str | None]
+
+# OCRmyPDF itself refuses to run when combined with Ghostscript
+# 10.0.0 through 10.02.0 and a rewriting mode (skip_text / redo_ocr)
+# because those GS releases contain upstream regressions that corrupt
+# PDFs with existing text. We fail preflight in the same window so
+# the problem is caught at boot rather than on the first job with
+# ``ocr_failed: ocrmypdf failed: Ghostscript 10.0.0 through 10.02.0``.
+_GS_BROKEN_MIN = (10, 0, 0)
+_GS_BROKEN_MAX = (10, 2, 0)
+_GS_VERSION_RE = re.compile(r"^(\d+)\.(\d+)(?:\.(\d+))?")
+
+
+def _default_gs_version_provider() -> str | None:
+    """Call ``gs --version`` and return the reported version string.
+
+    Returns ``None`` when Ghostscript is not on PATH or exits with an
+    error. Subprocess failures are intentionally swallowed: the
+    preflight check treats "gs not present" as a skip rather than a
+    failure, because ``ocrmypdf.ocr()`` will itself emit a precise
+    error on first use if gs is missing.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["gs", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _parse_gs_version(raw: str) -> tuple[int, int, int] | None:
+    """Parse a ``gs --version`` string like ``10.05.1`` into a tuple.
+
+    Returns ``None`` when the string does not match the expected
+    pattern. Two-component outputs (``10.0``) are treated as
+    ``(10, 0, 0)``.
+    """
+    match = _GS_VERSION_RE.match(raw.strip())
+    if match is None:
+        return None
+    major = int(match.group(1))
+    minor = int(match.group(2))
+    patch = int(match.group(3) or 0)
+    return (major, minor, patch)
+
+
+def _check_ghostscript_version(
+    settings: Settings,
+    *,
+    version_provider: GsVersionProvider | None = None,
+) -> PreflightCheck:
+    """Refuse to boot when the worker will shell out to a known-broken
+    Ghostscript while ocrmypdf is configured in rewriting mode.
+
+    The check applies only when ``ocr.backend=ocrmypdf`` and
+    ``ocr.ocrmypdf.skip_text=True`` (the default). For other
+    backends/modes the job-level GS usage is different and OCRmyPDF's
+    own validation is enough.
+    """
+    name = "ocr.ghostscript_version"
+    if settings.ocr.backend is not OcrBackend.OCRMYPDF:
+        return PreflightCheck(name=name, ok=True, detail=f"backend={settings.ocr.backend.value}")
+    if not settings.ocr.ocrmypdf.skip_text:
+        return PreflightCheck(name=name, ok=True, detail="skip_text=false; GS regression n/a")
+
+    provider = version_provider or _default_gs_version_provider
+    raw = provider()
+    if raw is None:
+        return PreflightCheck(
+            name=name,
+            ok=True,
+            detail="ghostscript not on PATH; deferring to ocrmypdf's own check",
+        )
+
+    parsed = _parse_gs_version(raw)
+    if parsed is None:
+        return PreflightCheck(
+            name=name,
+            ok=True,
+            detail=f"could not parse gs --version output: {raw!r}",
+        )
+
+    if _GS_BROKEN_MIN <= parsed <= _GS_BROKEN_MAX:
+        version_str = ".".join(str(c) for c in parsed)
+        return PreflightCheck(
+            name=name,
+            ok=False,
+            detail=(
+                f"Ghostscript {version_str} is in the known-broken range "
+                "10.0.0..10.02.0: it corrupts PDFs with existing text when "
+                "combined with ocrmypdf's skip_text/redo_ocr. Rebuild the "
+                "image on a base with Ghostscript >= 10.02.1 (e.g. Debian "
+                "trixie ships 10.05.1), or disable ocr.ocrmypdf.skip_text "
+                "as a temporary workaround."
+            ),
+        )
+
+    return PreflightCheck(name=name, ok=True, detail=f"gs={'.'.join(str(c) for c in parsed)}")
+
+
 def _check_splitter_weights(settings: Settings) -> PreflightCheck:
     s = settings.splitter
     total = s.keyword_weight + s.layout_weight + s.page_number_weight
@@ -462,6 +571,7 @@ def run_preflight(
     )
     checks.extend(_check_ai_coherence(settings))
     checks.append(_check_ocr_backend_available(settings))
+    checks.append(_check_ghostscript_version(settings))
     checks.append(_check_splitter_weights(settings))
     checks.append(_check_pipeline_version(settings))
 

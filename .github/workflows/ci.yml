@@ -159,6 +159,22 @@ jobs:
           PY
           # Also confirm the OCRmyPDF runtime binaries are wired.
           docker run --rm --entrypoint ocrmypdf "${IMAGE}" --version >/dev/null
+          # Ghostscript must NOT be in the broken 10.0.0..10.02.0
+          # window (Debian bookworm shipped 10.0.0 which corrupts PDFs
+          # with existing text when combined with ocrmypdf skip_text).
+          GS_VERSION="$(docker run --rm --entrypoint gs "${IMAGE}" --version | tr -d '[:space:]')"
+          echo "Ghostscript in image: ${GS_VERSION}"
+          python3 - <<PY
+          import re, sys
+          raw = "${GS_VERSION}"
+          m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?", raw)
+          assert m, f"unparseable gs version: {raw!r}"
+          v = (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+          assert not ((10, 0, 0) <= v <= (10, 2, 0)), (
+              f"image ships broken Ghostscript {raw}; rebuild on Debian trixie or newer"
+          )
+          print(f"Ghostscript {raw} is outside the 10.0.0..10.02.0 broken window")
+          PY
 
       # Second build (push=true) reuses the layer cache from the build
       # step, so this step is effectively a registry upload. Skipped on

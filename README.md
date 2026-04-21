@@ -162,7 +162,9 @@ available — see the troubleshooting section below.
 | `external_api` | Offload OCR to a paperless-ngx-compatible HTTP service. | None (pure HTTP client). | `ocr.external_api.endpoint`, optional `ocr.external_api.api_key`, `network.allow_external_egress=true`, and the target host in `network.allowed_hosts`. |
 
 Common OCRmyPDF knobs (`ocr.ocrmypdf.*`): `deskew`, `rotate_pages`,
-`skip_text`, `optimize`, `jobs`, `timeout_seconds`. Full table:
+`skip_text`, `optimize`, `jobs`, `timeout_seconds`,
+`clean_before_ocr` (default `true`, runs qpdf sanitize pass before OCR).
+Full table:
 [`docs/configuration.md`](docs/configuration.md).
 
 ---
@@ -241,6 +243,29 @@ Fix:
 From v1.0.x the preflight check `ocr.backend_available` catches this
 at boot with an operator-readable message instead of waiting for the
 first job to fail.
+
+### `ocr_failed: ocrmypdf failed: Ghostscript 10.0.0 through 10.02.0 contain serious regressions …`
+
+Root cause: the worker shells out to Ghostscript. Debian Bookworm
+shipped Ghostscript 10.0.0, which has documented upstream regressions
+that corrupt PDFs with existing text when combined with OCRmyPDF's
+`--skip-text` (our default). OCRmyPDF refuses to run in that
+combination.
+
+Fix:
+
+- Use the published image at `ghcr.io/<this-repo>:<tag>` built on
+  Debian Trixie (Ghostscript 10.05.1) or newer.
+- If you build your own image, base it on `python:3.12-slim-trixie`
+  (or newer) so `apt-get install ghostscript` pulls 10.05.1+.
+- Temporary workaround if you cannot rebuild right now: set
+  `DOCUNOMNOM__OCR__OCRMYPDF__SKIP_TEXT=false`. OCRmyPDF will then
+  refuse any PDF that already has a text layer instead of rewriting
+  it. Revert as soon as the image is rebuilt.
+
+From v1.0.x the preflight check `ocr.ghostscript_version` catches a
+known-broken Ghostscript at boot when `ocr.backend=ocrmypdf` and
+`skip_text=true`.
 
 ### `worker.preflight.fail` on boot
 

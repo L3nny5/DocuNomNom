@@ -8,20 +8,27 @@
 #                     same image (different commands).
 #
 # Image contents:
-#   - Python 3.12 (slim Debian bookworm)
+#   - Python 3.12 (slim Debian trixie)
 #   - OCRmyPDF + Tesseract (eng + deu language packs)
-#   - Ghostscript / unpaper / qpdf (OCRmyPDF runtime deps)
+#   - Ghostscript / unpaper / qpdf / pngquant (OCRmyPDF runtime deps)
 #   - tini as PID 1 (clean signal handling for the worker)
 #   - gosu for the entrypoint's PUID/PGID drop
 #   - The backend wheel + the prebuilt frontend assets
+#
+# Base image is pinned to Debian trixie (stable as of 2025+) because
+# bookworm ships Ghostscript 10.0.0 which contains the upstream
+# regressions that corrupt PDFs when combined with ocrmypdf's
+# --skip-text / --redo-ocr (the error message OCRmyPDF raises names
+# the 10.0.0..10.02.0 range explicitly). Trixie ships Ghostscript
+# 10.05.1 which is well past that broken window.
 #
 # Runtime model (v1 invariant):
 #   - Two services share this image: `api` (uvicorn) and `worker`
 #     (single replica). The single-worker invariant is also enforced
 #     by an advisory PID-file lock under work_dir at startup.
 
-ARG NODE_VERSION=20-bookworm-slim
-ARG PYTHON_VERSION=3.12-slim-bookworm
+ARG NODE_VERSION=20-trixie-slim
+ARG PYTHON_VERSION=3.12-slim-trixie
 
 # ---------- frontend build ----------
 FROM node:${NODE_VERSION} AS frontend-build
@@ -42,9 +49,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # (optionally) pngquant. We install those as system packages. The
 # ocrmypdf Python library itself comes from PyPI a few layers below —
 # the Debian ``ocrmypdf`` apt package installs it for the system's
-# Python 3.11 under /usr/lib/python3/dist-packages/, which is NOT on
-# the import path of the Python 3.12 interpreter shipped by the
-# ``python:3.12-slim-bookworm`` base image, so ``import ocrmypdf``
+# Python, which is NOT on the import path of the Python 3.12
+# interpreter shipped by the slim base image, so ``import ocrmypdf``
 # would fail at runtime with ``ocr_config_error``. tini is used as
 # PID 1 so SIGTERM reaches the worker cleanly; gosu drops to the
 # unprivileged ``app`` user.
