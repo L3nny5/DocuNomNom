@@ -1,0 +1,119 @@
+# Default configuration for DocuNomNom v1.
+#
+# Precedence at runtime:
+#   1. Environment variables (DOCUNOMNOM_* and DOCUNOMNOM__SECTION__KEY)
+#   2. This YAML file (or the file pointed to by DOCUNOMNOM_CONFIG)
+#   3. Model defaults declared in `settings.py`
+
+log_level: INFO
+
+paths:
+  input_dir: /data/input
+  output_dir: /data/output
+  work_dir: /data/work
+  archive_dir: /data/archive
+
+storage:
+  database_url: sqlite:///./data/docunomnom.sqlite3
+  ocr_artifact_dir: /data/work/ocr-artifacts
+  page_text_inline_max_bytes: 64000
+
+ingestion:
+  poll_interval_seconds: 5.0
+  stability_window_seconds: 10.0
+  ignore_patterns:
+    - ".*"
+    - "*.partial"
+    - "*.crdownload"
+    - "*.tmp"
+    - "*.part"
+  require_pdf_magic: true
+
+worker:
+  poll_interval_seconds: 2.0
+  lease_ttl_seconds: 120.0
+  heartbeat_interval_seconds: 30.0
+  max_attempts: 3
+
+ocr:
+  backend: ocrmypdf
+  languages:
+    - eng
+    - deu
+  ocrmypdf:
+    deskew: true
+    rotate_pages: true
+    skip_text: true
+    optimize: 1
+    jobs: 1
+    timeout_seconds: 900.0
+  external_api:
+    endpoint: ""
+    api_key: ""
+    timeout_seconds: 120.0
+    max_retries: 3
+    backoff_base_seconds: 1.0
+    backoff_max_seconds: 30.0
+    max_payload_mb: 50.0
+    page_chunk_size: 20
+    require_https: true
+
+network:
+  allow_external_egress: false
+  allowed_hosts: []
+
+splitter:
+  min_pages_per_part: 1
+  keyword_weight: 0.6
+  layout_weight: 0.2
+  page_number_weight: 0.2
+  auto_export_threshold: 0.65
+  keywords:
+    - "Rechnung"
+    - "Invoice"
+    - "Vertrag"
+    - "Contract"
+    - "Kontoauszug"
+    - "Account Statement"
+    - "Lohnabrechnung"
+    - "Payslip"
+    - "Mahnung"
+    - "Reminder"
+
+exporter:
+  archive_after_export: true
+  require_same_filesystem: true
+  output_basename_template: "{stem}_part_{index:03d}.pdf"
+  review_all_splits: false
+
+ai:
+  backend: "none"
+  mode: "off"
+  ollama:
+    base_url: "http://ollama:11434"
+    model: "qwen2.5:14b-instruct"
+    timeout_seconds: 120.0
+  openai:
+    api_key_env: "OPENAI_API_KEY"
+    base_url: "https://api.openai.com"
+    model: "gpt-4o-mini"
+    timeout_seconds: 60.0
+  thresholds:
+    auto_export_min_confidence: 0.85
+    review_required_below: 0.70
+  evidence:
+    require_for_ai: true
+    min_evidences_per_proposal: 1
+    allowed_kinds:
+      - keyword
+      - layout_break
+      - sender_change
+      - page_number
+      - structural
+      - ocr_snippet
+  refine:
+    max_boundary_shift_pages: 1
+    max_changes_per_analysis: 3
+
+runtime:
+  pipeline_version: "1.0.0"

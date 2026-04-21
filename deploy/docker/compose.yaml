@@ -1,0 +1,62 @@
+# DocuNomNom v1 compose stack.
+#
+# Two services share one image:
+#   - api:    FastAPI HTTP API (read/write traffic from the operator UI).
+#   - worker: single worker process. v1 invariant: replicas = 1.
+#
+# Both services need access to the same SQLite database file and the same
+# input/output/work/archive directories. Use the bind-mount paths from
+# `compose.truenas.yaml` for production deployments on TrueNAS.
+#
+# All four data directories MUST live on the same local filesystem (e.g.
+# one ZFS dataset). The runtime preflight refuses to start otherwise,
+# because the exporter relies on rename(2) being atomic between
+# work_dir and output_dir.
+
+x-docunomnom-env: &docunomnom-env
+  DOCUNOMNOM_LOG_LEVEL: INFO
+  DOCUNOMNOM_LOG_FORMAT: json
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: docunomnom:1.0.0
+    container_name: docunomnom-api
+    command:
+      ["uvicorn", "docunomnom.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *docunomnom-env
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    image: docunomnom:1.0.0
+    container_name: docunomnom-worker
+    # v1 invariant: ONE worker process. Do not raise replicas here; the
+    # worker also enforces this at startup via an advisory PID-file lock
+    # under work_dir.
+    command: ["python", "-m", "docunomnom.worker.main"]
+    environment:
+      <<: *docunomnom-env
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # Worker has no HTTP port; check that the lock file exists.
+      test: ["CMD-SHELL", "test -f /data/work/.docunomnom_worker.lock"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      replicas: 1

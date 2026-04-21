@@ -1,0 +1,34 @@
+[importlinter]
+root_package = docunomnom
+
+[importlinter:contract:core-isolation]
+name = Core must not depend on outer layers
+type = forbidden
+source_modules =
+    docunomnom.core
+forbidden_modules =
+    docunomnom.api
+    docunomnom.adapters
+    docunomnom.storage
+    docunomnom.worker
+    docunomnom.runtime
+
+[importlinter:contract:adapters-isolation]
+name = Adapters must not depend on api or worker
+type = forbidden
+source_modules =
+    docunomnom.adapters
+forbidden_modules =
+    docunomnom.api
+    docunomnom.worker
+    docunomnom.runtime
+
+[importlinter:contract:storage-isolation]
+name = Storage must not depend on api or worker
+type = forbidden
+source_modules =
+    docunomnom.storage
+forbidden_modules =
+    docunomnom.api
+    docunomnom.worker
+    docunomnom.runtime

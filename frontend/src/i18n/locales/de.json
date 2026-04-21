@@ -1,0 +1,161 @@
+{
+  "app": {
+    "title": "DocuNomNom",
+    "tagline": "Dokumente teilen & exportieren"
+  },
+  "nav": {
+    "jobs": "Jobs",
+    "review": "Prüfung",
+    "history": "Verlauf",
+    "config": "Konfiguration",
+    "keywords": "Stichwörter"
+  },
+  "common": {
+    "loading": "Wird geladen…",
+    "error": "Etwas ist schiefgelaufen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "add": "Hinzufügen",
+    "edit": "Bearbeiten",
+    "refresh": "Aktualisieren",
+    "yes": "Ja",
+    "no": "Nein",
+    "empty": "Noch keine Daten.",
+    "back": "Zurück"
+  },
+  "jobs": {
+    "title": "Jobs",
+    "rescan": "Eingangsordner neu einlesen",
+    "rescanned": "{{count}} neue Job(s) eingereiht.",
+    "filter": "Nach Status filtern",
+    "all": "Alle",
+    "headers": {
+      "id": "ID",
+      "file": "Datei",
+      "status": "Status",
+      "attempt": "Versuch",
+      "mode": "KI-Modus",
+      "updated": "Aktualisiert",
+      "actions": "Aktionen"
+    },
+    "actions": {
+      "view": "Anzeigen",
+      "retry": "Wiederholen",
+      "reprocess": "Neu verarbeiten"
+    },
+    "detail": {
+      "events": "Ereignisse",
+      "noEvents": "Keine Ereignisse vorhanden.",
+      "error": "Fehler",
+      "runKey": "Run-Key"
+    },
+    "status": {
+      "pending": "Ausstehend",
+      "processing": "Wird verarbeitet",
+      "review_required": "Prüfung nötig",
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen",
+      "cancelled": "Abgebrochen"
+    }
+  },
+  "history": {
+    "title": "Exportierte Teile",
+    "headers": {
+      "id": "Teil-ID",
+      "file": "Quelldatei",
+      "output": "Ausgabename",
+      "decision": "Entscheidung",
+      "confidence": "Konfidenz",
+      "exported": "Exportiert",
+      "actions": "Aktionen"
+    },
+    "actions": {
+      "reopen": "Zur Prüfung wiedereröffnen"
+    }
+  },
+  "review": {
+    "title": "Prüfungs-Warteschlange",
+    "filter": "Nach Status filtern",
+    "all": "Alle",
+    "headers": {
+      "id": "ID",
+      "file": "Datei",
+      "pages": "Seiten",
+      "confidence": "Konfidenz",
+      "status": "Status",
+      "actions": "Aktionen"
+    },
+    "actions": {
+      "open": "Öffnen"
+    },
+    "status": {
+      "open": "Offen",
+      "in_progress": "In Bearbeitung",
+      "done": "Erledigt"
+    },
+    "detail": {
+      "file": "Datei",
+      "pageRange": "Seitenbereich",
+      "status": "Status",
+      "confidence": "Konfidenz",
+      "proposals": "Trennvorschläge",
+      "noProposals": "Keine Vorschläge vorhanden.",
+      "markers": "Trennmarker",
+      "markersHint": "Seiten {{start}}–{{end}}. Jede markierte Seite startet ein neues Teildokument.",
+      "implicitStart": "Die erste Seite ist immer ein Start.",
+      "firstPageImplicit": "Start (Seite {{page}})",
+      "pageLabel": "Start: Seite {{page}}",
+      "removeMarker": "Marker auf Seite {{page}} entfernen",
+      "pagePlaceholder": "Seitenzahl",
+      "addMarker": "Marker hinzufügen",
+      "saveMarkers": "Marker speichern",
+      "markersSaved": "Gespeichert.",
+      "invalidPage": "Seite muss eine ganze Zahl zwischen {{start}} und {{end}} sein.",
+      "finalize": "Abschließen und exportieren",
+      "alreadyFinalized": "Dieser Prüfungseintrag ist bereits abgeschlossen.",
+      "finalizedSummary": "Abgeschlossen: {{count}} Teilstück(e) exportiert. Job ist nun {{status}}.",
+      "pdfTitle": "PDF-Vorschau"
+    }
+  },
+  "config": {
+    "title": "Konfiguration",
+    "effective": "Effektive Einstellungen",
+    "overrides": "UI-Überschreibungen",
+    "overridesNote": "Überschreibungen werden gespeichert, fließen aber in Phase 3 noch nicht in die Job-Verarbeitung ein. In einer späteren Phase werden sie aktiv.",
+    "fields": {
+      "ai_backend": "KI-Backend",
+      "ai_mode": "KI-Modus",
+      "ocr_backend": "OCR-Backend",
+      "ocr_languages": "OCR-Sprachen",
+      "splitter_keyword_weight": "Stichwort-Gewicht",
+      "splitter_layout_weight": "Layout-Gewicht",
+      "splitter_page_number_weight": "Seitenzahl-Gewicht",
+      "splitter_auto_export_threshold": "Auto-Export-Schwelle",
+      "splitter_min_pages_per_part": "Min. Seiten pro Teil",
+      "archive_after_export": "Nach Export archivieren"
+    },
+    "saved": "Gespeichert.",
+    "reset": "Überschreibungen löschen"
+  },
+  "keywords": {
+    "title": "Splitter-Stichwörter",
+    "headers": {
+      "term": "Begriff",
+      "locale": "Sprache",
+      "enabled": "Aktiv",
+      "weight": "Gewicht",
+      "actions": "Aktionen"
+    },
+    "addPlaceholder": "Neues Stichwort (Begriff)",
+    "weight": "Gewicht",
+    "locale": "Sprache",
+    "enabled": "Aktiv",
+    "deleteConfirm": "Stichwort „{{term}}\" löschen?"
+  },
+  "language": {
+    "label": "Sprache",
+    "en": "Englisch",
+    "de": "Deutsch"
+  }
+}

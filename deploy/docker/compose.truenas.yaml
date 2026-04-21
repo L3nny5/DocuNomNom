@@ -1,0 +1,63 @@
+# DocuNomNom — TrueNAS compose overlay.
+#
+# Use together with deploy/docker/compose.yaml:
+#
+#   docker compose \
+#     -f deploy/docker/compose.yaml \
+#     -f deploy/docker/compose.truenas.yaml \
+#     up -d
+#
+# All bind-mount paths MUST live on the SAME local ZFS dataset so that
+# rename(2) between work/ and output/ stays atomic. The SQLite database
+# (under DATA_DIR) MUST NOT live on SMB / NFS / FUSE. The worker
+# preflight refuses to start otherwise.
+#
+# Suggested dataset layout (single dataset, one mount point):
+#
+#   /mnt/tank/docunomnom/
+#     input/      <- drop PDFs here
+#     output/     <- mounted into paperless-ngx as its consume dir
+#     work/       <- atomic staging area (same fs as output/)
+#     archive/    <- moved-aside originals after successful export
+#     data/       <- SQLite DB + run-time state
+#     config/     <- config.yaml, keywords, etc.
+#
+# Override paths via env vars (export them in your shell or put them in
+# a .env file next to compose):
+#
+#   PUID=1000 PGID=1000 \
+#   INPUT_DIR=/mnt/tank/docunomnom/input \
+#   OUTPUT_DIR=/mnt/tank/paperless/consume \
+#   ARCHIVE_DIR=/mnt/tank/docunomnom/archive \
+#   WORK_DIR=/mnt/tank/docunomnom/work \
+#   DATA_DIR=/mnt/tank/docunomnom/data \
+#   CONFIG_DIR=/mnt/tank/docunomnom/config
+
+services:
+  api:
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      DOCUNOMNOM_CONFIG: /config/config.yaml
+      DOCUNOMNOM__STORAGE__DATABASE_URL: "sqlite:////data/docunomnom.sqlite3"
+    volumes:
+      - "${INPUT_DIR:-/mnt/tank/docunomnom/input}:/data/input"
+      - "${OUTPUT_DIR:-/mnt/tank/paperless/consume}:/data/output"
+      - "${WORK_DIR:-/mnt/tank/docunomnom/work}:/data/work"
+      - "${ARCHIVE_DIR:-/mnt/tank/docunomnom/archive}:/data/archive"
+      - "${DATA_DIR:-/mnt/tank/docunomnom/data}:/data"
+      - "${CONFIG_DIR:-/mnt/tank/docunomnom/config}:/config"
+
+  worker:
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      DOCUNOMNOM_CONFIG: /config/config.yaml
+      DOCUNOMNOM__STORAGE__DATABASE_URL: "sqlite:////data/docunomnom.sqlite3"
+    volumes:
+      - "${INPUT_DIR:-/mnt/tank/docunomnom/input}:/data/input"
+      - "${OUTPUT_DIR:-/mnt/tank/paperless/consume}:/data/output"
+      - "${WORK_DIR:-/mnt/tank/docunomnom/work}:/data/work"
+      - "${ARCHIVE_DIR:-/mnt/tank/docunomnom/archive}:/data/archive"
+      - "${DATA_DIR:-/mnt/tank/docunomnom/data}:/data"
+      - "${CONFIG_DIR:-/mnt/tank/docunomnom/config}:/config"

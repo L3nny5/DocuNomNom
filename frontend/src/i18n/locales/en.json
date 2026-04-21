@@ -1,0 +1,161 @@
+{
+  "app": {
+    "title": "DocuNomNom",
+    "tagline": "Document splitter & exporter"
+  },
+  "nav": {
+    "jobs": "Jobs",
+    "review": "Review",
+    "history": "History",
+    "config": "Config",
+    "keywords": "Keywords"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "add": "Add",
+    "edit": "Edit",
+    "refresh": "Refresh",
+    "yes": "Yes",
+    "no": "No",
+    "empty": "No data yet.",
+    "back": "Back"
+  },
+  "jobs": {
+    "title": "Jobs",
+    "rescan": "Rescan input directory",
+    "rescanned": "Enqueued {{count}} new job(s).",
+    "filter": "Filter by status",
+    "all": "All",
+    "headers": {
+      "id": "ID",
+      "file": "File",
+      "status": "Status",
+      "attempt": "Attempt",
+      "mode": "AI mode",
+      "updated": "Updated",
+      "actions": "Actions"
+    },
+    "actions": {
+      "view": "View",
+      "retry": "Retry",
+      "reprocess": "Reprocess"
+    },
+    "detail": {
+      "events": "Events",
+      "noEvents": "No events recorded.",
+      "error": "Error",
+      "runKey": "Run key"
+    },
+    "status": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "review_required": "Review required",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
+  },
+  "history": {
+    "title": "Exported parts",
+    "headers": {
+      "id": "Part ID",
+      "file": "Source file",
+      "output": "Output name",
+      "decision": "Decision",
+      "confidence": "Confidence",
+      "exported": "Exported",
+      "actions": "Actions"
+    },
+    "actions": {
+      "reopen": "Reopen for review"
+    }
+  },
+  "review": {
+    "title": "Review queue",
+    "filter": "Filter by status",
+    "all": "All",
+    "headers": {
+      "id": "ID",
+      "file": "File",
+      "pages": "Pages",
+      "confidence": "Confidence",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "actions": {
+      "open": "Open"
+    },
+    "status": {
+      "open": "Open",
+      "in_progress": "In progress",
+      "done": "Done"
+    },
+    "detail": {
+      "file": "File",
+      "pageRange": "Page range",
+      "status": "Status",
+      "confidence": "Confidence",
+      "proposals": "Split proposals",
+      "noProposals": "No proposals recorded.",
+      "markers": "Split markers",
+      "markersHint": "Pages {{start}}–{{end}}. Each marker page begins a new sub-document.",
+      "implicitStart": "First page is always a start.",
+      "firstPageImplicit": "Start (page {{page}})",
+      "pageLabel": "Start: page {{page}}",
+      "removeMarker": "Remove marker on page {{page}}",
+      "pagePlaceholder": "Page number",
+      "addMarker": "Add marker",
+      "saveMarkers": "Save markers",
+      "markersSaved": "Saved.",
+      "invalidPage": "Page must be an integer between {{start}} and {{end}}.",
+      "finalize": "Finalize and export",
+      "alreadyFinalized": "This review item has already been finalized.",
+      "finalizedSummary": "Finalized: {{count}} sub-part(s) exported. Job is now {{status}}.",
+      "pdfTitle": "PDF preview"
+    }
+  },
+  "config": {
+    "title": "Configuration",
+    "effective": "Effective settings",
+    "overrides": "UI overrides",
+    "overridesNote": "Overrides are persisted but, in Phase 3, are not yet wired into worker job processing. They become live in a later phase.",
+    "fields": {
+      "ai_backend": "AI backend",
+      "ai_mode": "AI mode",
+      "ocr_backend": "OCR backend",
+      "ocr_languages": "OCR languages",
+      "splitter_keyword_weight": "Keyword weight",
+      "splitter_layout_weight": "Layout weight",
+      "splitter_page_number_weight": "Page-number weight",
+      "splitter_auto_export_threshold": "Auto-export threshold",
+      "splitter_min_pages_per_part": "Min pages per part",
+      "archive_after_export": "Archive after export"
+    },
+    "saved": "Saved.",
+    "reset": "Clear overrides"
+  },
+  "keywords": {
+    "title": "Splitter keywords",
+    "headers": {
+      "term": "Term",
+      "locale": "Locale",
+      "enabled": "Enabled",
+      "weight": "Weight",
+      "actions": "Actions"
+    },
+    "addPlaceholder": "New keyword (term)",
+    "weight": "Weight",
+    "locale": "Locale",
+    "enabled": "Enabled",
+    "deleteConfirm": "Delete keyword \"{{term}}\"?"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "de": "German"
+  }
+}
